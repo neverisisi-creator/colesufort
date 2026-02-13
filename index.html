@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Randomizer Telegram </title>
+    <style>
+        :root {
+            --tg-theme-bg-color: #1c1c1e;
+            --tg-theme-text-color: #ffffff;
+            --tg-theme-button-color: #3390ec;
+            --tg-theme-button-text-color: #ffffff;
+        }
+
+        body {
+            background-color: var(--tg-theme-bg-color);
+            color: var(--tg-theme-text-color);
+            font-family: -apple-system, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+
+        .wheel-container {
+            position: relative;
+            width: 300px;
+            height: 300px;
+            margin: 30px 0;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 5px solid #fff;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        .pointer {
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0; height: 0;
+            border-left: 15px solid transparent;
+            border-right: 15px solid transparent;
+            border-top: 30px solid #ff3b30;
+            z-index: 10;
+        }
+
+        .controls {
+            width: 100%;
+            max-width: 320px;
+            display: flex;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        input {
+            flex: 1;
+            padding: 15px;
+            border-radius: 12px;
+            border: none;
+            background: #2c2c2e;
+            color: white;
+            font-size: 16px;
+        }
+
+        button {
+            padding: 12px 20px;
+            border-radius: 12px;
+            border: none;
+            background: var(--tg-theme-button-color);
+            color: white;
+            font-weight: bold;
+        }
+
+        .spin-btn {
+            width: 100%;
+            max-width: 320px;
+            padding: 18px;
+            font-size: 20px;
+            background: linear-gradient(45deg, #32d74b, #3390ec);
+            margin-top: 10px;
+        }
+
+        #result {
+            margin: 20px 0;
+            font-size: 22px;
+            font-weight: bold;
+            text-align: center;
+            color: #ff9500;
+            min-height: 30px;
+        }
+
+        .empty-msg {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            font-size: 14px;
+            color: #8e8e93;
+            width: 80%;
+        }
+    </style>
+</head>
+<body>
+
+    <h2 id="title">🎡 Добавь свои приколы</h2>
+
+    <div class="wheel-container">
+        <div class="pointer"></div>
+        <canvas id="wheel" width="500" height="500"></canvas>
+        <div id="emptyMsg" class="empty-msg">Колесо пустое.<br>Добавь варианты ниже!</div>
+    </div>
+
+    <div id="result"></div>
+
+    <div class="controls">
+        <input type="text" id="newItem" placeholder="Сегодня я выиграю в лотерее?">
+        <button onclick="addItem()">+</button>
+    </div>
+
+    <button class="spin-btn" id="spinBtn" onclick="spin()" style="display:none;">КРУТИ!</button>
+
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        const canvas = document.getElementById('wheel');
+        const ctx = canvas.getContext('2d');
+        const resultDiv = document.getElementById('result');
+        const emptyMsg = document.getElementById('emptyMsg');
+        const spinBtn = document.getElementById('spinBtn');
+        
+        let items = []; // База пустая
+        const colors = ['#FF3B30', '#34C759', '#007AFF', '#FF9500', '#AF52DE', '#5AC8FA'];
+        
+        let startAngle = 0;
+        let isSpinning = false;
+
+        function draw() {
+            const arc = Math.PI / (items.length / 2);
+            ctx.clearRect(0, 0, 500, 500);
+            
+            if (items.length === 0) {
+                emptyMsg.style.display = 'block';
+                spinBtn.style.display = 'none';
+                return;
+            }
+
+            emptyMsg.style.display = 'none';
+            spinBtn.style.display = 'block';
+
+            items.forEach((text, i) => {
+                const angle = startAngle + i * arc;
+                ctx.fillStyle = colors[i % colors.length];
+                ctx.beginPath();
+                ctx.arc(250, 250, 240, angle, angle + arc, false);
+                ctx.arc(250, 250, 0, angle + arc, angle, true);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.save();
+                ctx.fillStyle = "white";
+                ctx.font = "bold 22px sans-serif";
+                ctx.translate(250 + Math.cos(angle + arc / 2) * 160, 250 + Math.sin(angle + arc / 2) * 160);
+                ctx.rotate(angle + arc / 2 + Math.PI / 2);
+                ctx.fillText(text.slice(0, 15), -ctx.measureText(text.slice(0, 15)).width / 2, 0);
+                ctx.restore();
+            });
+        }
+
+        function addItem() {
+            const input = document.getElementById('newItem');
+            if (input.value.trim()) {
+                items.push(input.value.trim());
+                input.value = '';
+                draw();
+                tg.HapticFeedback.impactOccurred('medium');
+            }
+        }
+
+        function spin() {
+            if (isSpinning || items.length < 2) {
+                if(items.length < 2) alert("Добавь хотя бы 2 варианта!");
+                return;
+            }
+            isSpinning = true;
+            resultDiv.innerText = "Удача решает...";
+            
+            let duration = 4000;
+            let start = null;
+            let initialSpeed = Math.random() * 0.5 + 0.5;
+
+            function animate(timestamp) {
+                if (!start) start = timestamp;
+                let progress = timestamp - start;
+                
+                let slowDown = Math.pow(1 - progress / duration, 3);
+                startAngle += initialSpeed * slowDown;
+
+                draw();
+
+                if (progress < duration) {
+                    requestAnimationFrame(animate);
+                } else {
+                    isSpinning = false;
+                    finalize();
+                }
+            }
+            requestAnimationFrame(animate);
+        }
+
+        function finalize() {
+            const arc = 360 / items.length;
+            const degrees = (startAngle * 180 / Math.PI) + 90;
+            const index = Math.floor((360 - (degrees % 360)) / arc) % items.length;
+            resultDiv.innerText = "🎉 " + items[index];
+            tg.HapticFeedback.notificationOccurred('success');
+        }
+
+        draw();
+    </script>
+</body>
+</html>
